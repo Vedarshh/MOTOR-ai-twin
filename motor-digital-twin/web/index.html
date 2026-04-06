@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motor Digital Twin | Control Center</title>
+    <meta name="description" content="ESP32 Motor Digital Twin — Real-time telemetry, health analytics, and predictive alerts">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+/* ==================== DESIGN SYSTEM ==================== */
+:root {
+    --bg-0: #050810;
+    --bg-1: #080d1a;
+    --bg-2: #0c1322;
+    --bg-card: rgba(12,19,34,0.9);
+    --glass: rgba(255,255,255,0.03);
+    --glass-border: rgba(255,255,255,0.07);
+    --glass-border-bright: rgba(99,179,237,0.25);
+
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.15);
+    --cyan: #06b6d4;
+    --cyan-dim: rgba(6,182,212,0.12);
+    --violet: #8b5cf6;
+    --violet-dim: rgba(139,92,246,0.12);
+    --emerald: #10b981;
+    --emerald-dim: rgba(16,185,129,0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,0.12);
+    --rose: #f43f5e;
+    --rose-dim: rgba(244,63,94,0.12);
+
+    --text-1: #f0f6ff;
+    --text-2: #8ba3c7;
+    --text-3: #4d6585;
+    --text-4: #2a3a50;
+
+    --font: 'Inter', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+
+    --r-sm: 10px;
+    --r-md: 14px;
+    --r-lg: 18px;
+    --r-xl: 24px;
+}
+
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    font-family: var(--font);
+    background: var(--bg-0);
+    color: var(--text-1);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Animated background */
+body::before {
+    content:'';
+    position: fixed;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(59,130,246,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139,92,246,0.05) 0%, transparent 60%),
+        linear-gradient(rgba(59,130,246,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.025) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.app { position: relative; z-index: 1; max-width: 1440px; margin: 0 auto; padding: 20px 24px 40px; }
+
+/* ==================== TYPOGRAPHY ==================== */
+.label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); }
+.mono { font-family: var(--mono); }
+
+/* ==================== CARDS ==================== */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-lg);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+.card:hover { border-color: var(--glass-border-bright); }
+.card::before {
+    content:'';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+/* ==================== HEADER ==================== */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    margin-bottom: 20px;
+    background: rgba(8,13,26,0.85);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-xl);
+    backdrop-filter: blur(30px);
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.header-brand { display: flex; align-items: center; gap: 14px; }
+.brand-icon {
+    width: 46px; height: 46px;
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+    border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 0 24px rgba(59,130,246,0.35);
+    flex-shrink: 0;
+}
+.brand-name {
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    background: linear-gradient(90deg, #fff 0%, #93c5fd 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.brand-sub {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--text-3);
+    margin-top: 2px;
+}
+
+.header-center { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.stat-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 99px;
+    font-size: 0.72rem;
+    color: var(--text-2);
+    font-family: var(--mono);
+}
+.stat-pill strong { color: var(--text-1); font-weight: 600; }
+
+.header-right { display: flex; align-items: center; gap: 12px; }
+
+.conn-badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px;
+    border-radius: 99px;
+    border: 1px solid var(--glass-border);
+    background: rgba(0,0,0,0.3);
+    font-size: 0.78rem; font-weight: 600;
+    transition: all 0.4s;
+    cursor: default;
+}
+.conn-badge .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-3);
+    transition: all 0.4s;
+    flex-shrink: 0;
+}
+.conn-badge.connected { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.08); color: var(--emerald); }
+.conn-badge.connected .dot { background: var(--emerald); box-shadow: 0 0 8px var(--emerald), 0 0 16px rgba(16,185,129,0.4); animation: pulse-dot 2s ease infinite; }
+.conn-badge.connecting { border-color: rgba(245,158,11,0.3); color: var(--amber); }
+.conn-badge.connecting .dot { background: var(--amber); animation: pulse-dot 0.8s ease infinite; }
+.conn-badge.disconnected { border-color: rgba(244,63,94,0.3); color: var(--rose); }
+.conn-badge.disconnected .dot { background: var(--rose); }
+
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+.time-display { font-family: var(--mono); font-size: 0.72rem; color: var(--text-3); }
+
+/* ==================== MAIN GRID ==================== */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-template-rows: auto;
+    gap: 16px;
+}
+
+/* ==================== METRIC CARDS ==================== */
+.metric-card {
+    grid-column: span 4;
+    padding: 20px;
+}
+@media(max-width:1100px){ .metric-card{grid-column:span 6;} }
+@media(max-width:640px){ .metric-card{grid-column:span 12;} }
+
+.mc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+
+.mc-badge {
+    padding: 4px 10px;
+    border-radius: 99px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+.mc-badge.ok { background: rgba(16,185,129,0.15); color: var(--emerald); border: 1px solid rgba(16,185,129,0.2); }
+.mc-badge.warn { background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+.mc-badge.crit { background: rgba(244,63,94,0.15); color: var(--rose); border: 1px solid rgba(244,63,94,0.2); }
+
+.mc-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+}
+
+.mc-value {
+    font-size: 2.8rem; font-weight: 900;
+    font-family: var(--mono);
+    letter-spacing: -3px; line-height: 1;
+    margin-bottom: 4px;
+    transition: all 0.3s;
+}
+.mc-unit { font-size: 0.8rem; color: var(--text-3); margin-bottom: 12px; }
+
+.mc-bar-track { height: 3px; background: rgba(255,255,255,0.05); border-radius: 99px; overflow: hidden; }
+.mc-bar-fill { height: 100%; border-radius: 99px; width: 0%; transition: width 0.7s cubic-bezier(.34,1.56,.64,1); }
+
+.mc-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.68rem; color: var(--text-3); }
+.mc-delta { font-family: var(--mono); }
+
+/* Card themes */
+.card-temp .mc-icon { background: rgba(244,63,94,0.12); }
+.card-temp .mc-value { color: #fb7185; }
+.card-temp .mc-bar-fill { background: linear-gradient(90deg,#f43f5e,#fb7185); box-shadow: 0 0 8px rgba(244,63,94,0.4); }
+
+.card-current .mc-icon { background: rgba(245,158,11,0.12); }
+.card-current .mc-value { color: var(--amber); }
+.card-current .mc-bar-fill { background: linear-gradient(90deg,#d97706,#f59e0b); box-shadow: 0 0 8px rgba(245,158,11,0.4); }
+
+.card-vib .mc-icon { background: rgba(139,92,246,0.12); }
+.card-vib .mc-value { color: var(--violet); }
+.card-vib .mc-bar-fill { background: linear-gradient(90deg,#7c3aed,#8b5cf6); box-shadow: 0 0 8px rgba(139,92,246,0.4); }
+
+.card-volt .mc-icon { background: rgba(59,130,246,0.12); }
+.card-volt .mc-value { color: var(--blue); }
+.card-volt .mc-bar-fill { background: linear-gradient(90deg,#2563eb,#3b82f6); box-shadow: 0 0 8px rgba(59,130,246,0.4); }
+
+.card-power .mc-icon { background: rgba(16,185,129,0.12); }
+.card-power .mc-value { color: var(--emerald); }
+.card-power .mc-bar-fill { background: linear-gradient(90deg,#059669,#10b981); box-shadow: 0 0 8px rgba(16,185,129,0.4); }
+
+.card-rpm .mc-icon { background: rgba(6,182,212,0.12); }
+.card-rpm .mc-value { color: var(--cyan); }
+.card-rpm .mc-bar-fill { background: linear-gradient(90deg,#0891b2,#06b6d4); box-shadow: 0 0 8px rgba(6,182,212,0.4); }
+
+/* ==================== GAUGE ==================== */
+.gauge-section { grid-column: span 4; padding: 24px; display: flex; flex-direction: column; align-items: center; }
+@media(max-width:1100px){ .gauge-section{grid-column:span 6;} }
+@media(max-width:640px){ .gauge-section{grid-column:span 12;} }
+
+.gauge-wrapper { position: relative; width: 180px; height: 110px; margin: 8px auto; }
+.gauge-svg { width: 180px; height: 110px; }
+.gauge-bg { fill: none; stroke: rgba(255,255,255,0.05); stroke-width: 12; stroke-linecap: round; }
+.gauge-fill {
+    fill: none; stroke-width: 12; stroke-linecap: round;
+    stroke-dasharray: 240;
+    stroke-dashoffset: 240;
+    transition: stroke-dashoffset 1s cubic-bezier(.34,1.56,.64,1), stroke 0.5s;
+}
+.gauge-center {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    text-align: center;
+}
+.gauge-val { font-size: 1.6rem; font-weight: 900; font-family: var(--mono); letter-spacing: -2px; line-height: 1; }
+.gauge-label { font-size: 0.65rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; }
+.gauge-ticks { display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.6rem; font-family: var(--mono); color: var(--text-3); }
+
+/* ==================== HEALTH ==================== */
+.health-card { grid-column: span 4; padding: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+@media(max-width:1100px){ .health-card{grid-column:span 12;} }
+
+.health-ring-wrap { position: relative; width: 150px; height: 150px; margin: 0 auto 16px; }
+.health-ring-svg { width: 150px; height: 150px; transform: rotate(-90deg); }
+.h-ring-bg { fill: none; stroke: rgba(255,255,255,0.05); stroke-width: 11; }
+.h-ring-fill {
+    fill: none; stroke-width: 11; stroke-linecap: round;
+    stroke-dasharray: 408;
+    stroke-dashoffset: 408;
+    transition: stroke-dashoffset 1.2s cubic-bezier(.34,1.56,.64,1), stroke 0.5s;
+    filter: drop-shadow(0 0 6px var(--emerald));
+}
+.health-center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+}
+.health-pct { font-size: 2.2rem; font-weight: 900; font-family: var(--mono); letter-spacing: -2px; line-height: 1; color: var(--emerald); }
+.health-label-sm { font-size: 0.6rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; }
+#health-status-badge {
+    font-size: 1.1rem; font-weight: 800; letter-spacing: -0.5px;
+    transition: color 0.5s;
+}
+
+/* ==================== SECTION LABELS ==================== */
+.section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+}
+.section-title {
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--text-3);
+    display: flex; align-items: center; gap: 8px;
+}
+.section-title::before { content: ''; display: block; width: 3px; height: 14px; border-radius: 99px; background: currentColor; }
+
+/* ==================== CHARTS ==================== */
+.chart-main { grid-column: span 8; padding: 24px; }
+@media(max-width:1100px){ .chart-main{grid-column:span 12;} }
+
+.chart-tabs { display: flex; gap: 4px; }
+.tab-btn {
+    padding: 5px 12px; border-radius: 6px; border: 1px solid transparent;
+    font-size: 0.72rem; font-weight: 600; cursor: pointer;
+    background: transparent; color: var(--text-3);
+    transition: all 0.2s;
+}
+.tab-btn.active { background: var(--blue-dim); border-color: rgba(59,130,246,0.3); color: var(--blue); }
+.tab-btn:hover:not(.active) { color: var(--text-2); background: var(--glass); }
+
+.chart-box { position: relative; height: 200px; margin-top: 16px; }
+
+/* ==================== ALERTS ==================== */
+.alert-card { grid-column: span 4; padding: 20px; }
+@media(max-width:1100px){ .alert-card{grid-column:span 12;} }
+
+#alert-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: col; flex-direction: column; gap: 8px; }
+#alert-list::-webkit-scrollbar { width: 3px; }
+#alert-list::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 99px; }
+
+.alert-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: var(--r-sm);
+    animation: slideIn 0.3s ease;
+    border: 1px solid transparent;
+}
+.alert-item.critical { background: rgba(244,63,94,0.08); border-color: rgba(244,63,94,0.2); }
+.alert-item.warning { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2); }
+.alert-item.info { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.15); }
+.alert-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.alert-item.critical .alert-dot { background: var(--rose); box-shadow: 0 0 5px var(--rose); }
+.alert-item.warning .alert-dot { background: var(--amber); }
+.alert-item.info .alert-dot { background: var(--blue); }
+.alert-msg { font-size: 0.78rem; color: var(--text-1); flex: 1; line-height: 1.4; }
+.alert-time { font-family: var(--mono); font-size: 0.62rem; color: var(--text-3); white-space: nowrap; }
+.alert-empty { text-align: center; padding: 28px 16px; }
+.alert-empty-icon { font-size: 1.8rem; margin-bottom: 8px; }
+.alert-empty-text { font-size: 0.78rem; color: var(--text-3); }
+
+@keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ==================== STATS ROW ==================== */
+.stats-row { grid-column: span 12; display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+@media(max-width:900px){ .stats-row{grid-template-columns:repeat(2,1fr);} }
+@media(max-width:480px){ .stats-row{grid-template-columns:1fr;} }
+
+.stat-card { padding: 18px 20px; }
+.stat-num { font-size: 1.5rem; font-weight: 800; font-family: var(--mono); letter-spacing: -1px; margin: 6px 0 2px; }
+.stat-change { font-size: 0.68rem; color: var(--text-3); font-family: var(--mono); }
+
+/* ==================== RAW FEED ==================== */
+.feed-card { grid-column: span 6; padding: 20px; }
+@media(max-width:900px){ .feed-card{grid-column:span 12;} }
+
+.feed-list { list-style: none; max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.feed-list::-webkit-scrollbar { width: 2px; }
+.feed-list::-webkit-scrollbar-thumb { background: var(--glass-border); }
+.feed-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 10px; border-radius: 7px;
+    background: rgba(255,255,255,0.02);
+    font-family: var(--mono); font-size: 0.68rem;
+    animation: slideIn 0.3s ease;
+    border: 1px solid rgba(255,255,255,0.03);
+}
+.feed-item:first-child { background: rgba(59,130,246,0.06); border-color: rgba(59,130,246,0.12); }
+.feed-time { color: var(--text-3); }
+.feed-data { color: var(--cyan); }
+
+/* ==================== MINI MAP / CONNECTION ==================== */
+.conn-card { grid-column: span 6; padding: 20px; }
+@media(max-width:900px){ .conn-card{grid-column:span 12;} }
+
+.conn-flow { display: flex; align-items: center; justify-content: center; gap: 0; margin: 16px 0; flex-wrap: wrap; gap: 4px; }
+.conn-node {
+    padding: 10px 16px; border-radius: var(--r-sm);
+    text-align: center; min-width: 90px;
+    background: var(--glass); border: 1px solid var(--glass-border);
+}
+.conn-node.active { border-color: var(--glass-border-bright); background: var(--blue-dim); }
+.conn-node-icon { font-size: 1.2rem; }
+.conn-node-label { font-size: 0.62rem; color: var(--text-3); font-family: var(--mono); margin-top: 3px; }
+.conn-node-status { font-size: 0.6rem; color: var(--emerald); margin-top: 2px; }
+
+.conn-arrow {
+    display: flex; align-items: center;
+    padding: 0 4px;
+    color: var(--text-3);
+    font-size: 0.8rem;
+    position: relative;
+}
+.conn-arrow::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 2px;
+    background: linear-gradient(90deg, var(--blue), transparent);
+    animation: flow 1.5s linear infinite;
+}
+@keyframes flow { from{opacity:0.2} to{opacity:1} }
+
+/* ==================== FOOTER ==================== */
+.footer {
+    grid-column: span 12;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 20px;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-md);
+    background: rgba(8,13,26,0.5);
+    flex-wrap: wrap; gap: 8px;
+}
+.footer p { font-family: var(--mono); font-size: 0.65rem; color: var(--text-3); }
+.footer-badge { font-size: 0.65rem; color: var(--blue); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+
+/* ==================== ANIMATIONS ==================== */
+@keyframes valueFlash { 0%{opacity:0.5} 100%{opacity:1} }
+.val-flash { animation: valueFlash 0.2s ease-out; }
+
+body.critical-mode .app::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 999; pointer-events: none;
+    border: 2px solid var(--rose);
+    box-shadow: inset 0 0 60px rgba(244,63,94,0.15);
+    border-radius: 0; animation: critBlink 0.8s ease infinite alternate;
+}
+@keyframes critBlink { from{opacity:0.3} to{opacity:1} }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 99px; }
+
+/* Responsive */
+@media(max-width:768px) {
+    .app { padding: 12px 14px 24px; }
+    .header { padding: 14px 16px; }
+    .header-center { display: none; }
+    .dashboard-grid { gap: 12px; }
+}
+    </style>
+</head>
+<body>
+<div class="app">
+
+<!-- ==================== HEADER ==================== -->
+<header class="header">
+    <div class="header-brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+            <div class="brand-name">Motor Digital Twin</div>
+            <div class="brand-sub">ESP32 · broker.hivemq.com · motor/data</div>
+        </div>
+    </div>
+
+    <div class="header-center">
+        <div class="stat-pill">Records: <strong id="hdr-count">—</strong></div>
+        <div class="stat-pill">Avg RPM: <strong id="hdr-avg-rpm">—</strong></div>
+        <div class="stat-pill">Avg Current: <strong id="hdr-avg-curr">—</strong>A</div>
+    </div>
+
+    <div class="header-right">
+        <div class="time-display mono" id="hdr-time">—</div>
+        <div class="conn-badge connecting" id="conn-badge">
+            <span class="dot"></span>
+            <span id="conn-text">Connecting…</span>
+        </div>
+    </div>
+</header>
+
+<!-- ==================== DASHBOARD GRID ==================== -->
+<div class="dashboard-grid">
+
+    <!-- ── METRIC CARDS ── -->
+    <div class="card metric-card card-temp">
+        <div class="mc-top">
+            <div>
+                <div class="label">Temperature</div>
+                <div class="mc-unit">°Celsius</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <div class="mc-icon">🌡️</div>
+                <div class="mc-badge ok" id="badge-temp">OK</div>
+            </div>
+        </div>
+        <div class="mc-value" id="val-temp">—</div>
+        <div class="mc-bar-track"><div class="mc-bar-fill" id="bar-temp"></div></div>
+        <div class="mc-footer">
+            <span>Threshold: 60°C</span>
+            <span class="mc-delta mono" id="delta-temp">—</span>
+        </div>
+    </div>
+
+    <div class="card metric-card card-current">
+        <div class="mc-top">
+            <div>
+                <div class="label">Current Draw</div>
+                <div class="mc-unit">Amperes (A)</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <div class="mc-icon">⚡</div>
+                <div class="mc-badge ok" id="badge-curr">OK</div>
+            </div>
+        </div>
+        <div class="mc-value" id="val-current">—</div>
+        <div class="mc-bar-track"><div class="mc-bar-fill" id="bar-current"></div></div>
+        <div class="mc-footer">
+            <span>Threshold: 20A</span>
+            <span class="mc-delta mono" id="delta-curr">—</span>
+        </div>
+    </div>
+
+    <!-- NEW VOLTAGE CARD -->
+    <div class="card metric-card card-volt">
+        <div class="mc-top">
+            <div>
+                <div class="label">Voltage</div>
+                <div class="mc-unit">Volts (V)</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <div class="mc-icon">🔌</div>
+                <div class="mc-badge ok" id="badge-volt">OK</div>
+            </div>
+        </div>
+        <div class="mc-value" id="val-voltage">—</div>
+        <div class="mc-bar-track"><div class="mc-bar-fill" id="bar-voltage"></div></div>
+        <div class="mc-footer">
+            <span>Threshold: 15V</span>
+            <span class="mc-delta mono" id="delta-volt">—</span>
+        </div>
+    </div>
+
+    <!-- NEW POWER CARD -->
+    <div class="card metric-card card-power">
+        <div class="mc-top">
+            <div>
+                <div class="label">Power</div>
+                <div class="mc-unit">Watts (W)</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <div class="mc-icon">🔋</div>
+                <div class="mc-badge ok" id="badge-power">OK</div>
+            </div>
+        </div>
+        <div class="mc-value" id="val-power">—</div>
+        <div class="mc-bar-track"><div class="mc-bar-fill" id="bar-power"></div></div>
+        <div class="mc-footer">
+            <span>Threshold: 450W</span>
+            <span class="mc-delta mono" id="delta-power">—</span>
+        </div>
+    </div>
+
+    <div class="card metric-card card-vib">
+        <div class="mc-top">
+            <div>
+                <div class="label">Vibration</div>
+                <div class="mc-unit">G-Force</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <div class="mc-icon">📳</div>
+                <div class="mc-badge ok" id="badge-vib">OK</div>
+            </div>
+        </div>
+        <div class="mc-value" id="val-vib">—</div>
+        <div class="mc-bar-track"><div class="mc-bar-fill" id="bar-vib"></div></div>
+        <div class="mc-footer">
+            <span>Threshold: 0.5G</span>
+            <span class="mc-delta mono" id="delta-vib">—</span>
+        </div>
+    </div>
+
+    <div class="card metric-card card-rpm">
+        <div class="mc-top">
+            <div>
+                <div class="label">Motor Speed</div>
+                <div class="mc-unit">Rotations/Min</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <div class="mc-icon">🔄</div>
+                <div class="mc-badge ok" id="badge-rpm">OK</div>
+            </div>
+        </div>
+        <div class="mc-value" id="val-rpm">—</div>
+        <div class="mc-bar-track"><div class="mc-bar-fill" id="bar-rpm"></div></div>
+        <div class="mc-footer">
+            <span>Max: 5000 RPM</span>
+            <span class="mc-delta mono" id="delta-rpm">—</span>
+        </div>
+    </div>
+
+    <!-- ── GAUGE: RPM ── -->
+    <div class="card gauge-section">
+        <div class="section-header" style="width:100%">
+            <div class="section-title" style="color:var(--cyan)">RPM Gauge</div>
+        </div>
+        <div class="gauge-wrapper">
+            <svg class="gauge-svg" viewBox="0 0 180 110">
+                <path class="gauge-bg" d="M 20 100 A 70 70 0 0 1 160 100" stroke-linecap="round"/>
+                <path class="gauge-fill" id="gauge-rpm-fill" d="M 20 100 A 70 70 0 0 1 160 100"
+                    stroke="#06b6d4" stroke-linecap="round"/>
+            </svg>
+            <div class="gauge-center">
+                <div class="gauge-val" id="gauge-rpm-val" style="color:var(--cyan)">0</div>
+                <div class="gauge-label">RPM</div>
+            </div>
+        </div>
+        <div class="gauge-ticks" style="width:160px;margin:0 auto">
+            <span>0</span><span>1250</span><span>2500</span><span>3750</span><span>5000</span>
+        </div>
+    </div>
+
+    <!-- ── HEALTH RING ── -->
+    <div class="card health-card">
+        <div class="section-title" style="color:var(--emerald);margin-bottom:16px">Motor Health</div>
+        <div class="health-ring-wrap">
+            <svg class="health-ring-svg" viewBox="0 0 150 150">
+                <circle class="h-ring-bg" cx="75" cy="75" r="65"/>
+                <circle class="h-ring-fill" id="h-ring" cx="75" cy="75" r="65" stroke="#10b981"/>
+            </svg>
+            <div class="health-center">
+                <div class="health-pct" id="health-pct">—</div>
+                <div class="health-label-sm">Health Score</div>
+            </div>
+        </div>
+        <div id="health-status-badge" style="color:var(--emerald);margin-top:4px;font-size:1.1rem;font-weight:800;">Waiting…</div>
+        <div style="font-size:0.68rem;color:var(--text-3);margin-top:6px" id="health-desc">Connecting to motor...</div>
+    </div>
+
+    <!-- ── GAUGE: TEMPERATURE ── -->
+    <div class="card gauge-section">
+        <div class="section-header" style="width:100%">
+            <div class="section-title" style="color:#fb7185">Temp Gauge</div>
+        </div>
+        <div class="gauge-wrapper">
+            <svg class="gauge-svg" viewBox="0 0 180 110">
+                <path class="gauge-bg" d="M 20 100 A 70 70 0 0 1 160 100" stroke-linecap="round"/>
+                <path class="gauge-fill" id="gauge-temp-fill" d="M 20 100 A 70 70 0 0 1 160 100"
+                    stroke="#fb7185" stroke-linecap="round"/>
+            </svg>
+            <div class="gauge-center">
+                <div class="gauge-val" id="gauge-temp-val" style="color:#fb7185">0</div>
+                <div class="gauge-label">°C</div>
+            </div>
+        </div>
+        <div class="gauge-ticks" style="width:160px;margin:0 auto">
+            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+        </div>
+    </div>
+
+    <!-- ── MAIN CHART ── -->
+    <div class="card chart-main">
+        <div class="section-header">
+            <div class="section-title" style="color:var(--blue)">Performance History</div>
+            <div class="chart-tabs">
+                <button class="tab-btn active" onclick="switchChart('rpm')">RPM</button>
+                <button class="tab-btn" onclick="switchChart('current')">Current</button>
+                <button class="tab-btn" onclick="switchChart('temp')">Temp</button>
+                <button class="tab-btn" onclick="switchChart('all')">All</button>
+            </div>
+        </div>
+        <div class="chart-box">
+            <canvas id="mainChart"></canvas>
+        </div>
+    </div>
+
+    <!-- ── ALERTS ── -->
+    <div class="card alert-card">
+        <div class="section-header">
+            <div class="section-title" style="color:var(--rose)">Alert Center</div>
+            <button onclick="clearAlerts()" style="font-size:0.65rem;color:var(--text-3);background:none;border:none;cursor:pointer;font-family:var(--mono)">Clear</button>
+        </div>
+        <div id="alert-list">
+            <div class="alert-empty">
+                <div class="alert-empty-icon">🔍</div>
+                <div class="alert-empty-text">Waiting for data...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── STATS ROW ── -->
+    <div class="stats-row">
+        <div class="card stat-card">
+            <div class="label">Total Records</div>
+            <div class="stat-num" id="stat-count" style="color:var(--blue)">—</div>
+            <div class="stat-change">Database entries stored</div>
+        </div>
+        <div class="card stat-card">
+            <div class="label">Avg Current</div>
+            <div class="stat-num" id="stat-avg-curr" style="color:var(--amber)">—<span style="font-size:0.9rem">A</span></div>
+            <div class="stat-change">All-time average</div>
+        </div>
+        <div class="card stat-card">
+            <div class="label">Avg RPM</div>
+            <div class="stat-num" id="stat-avg-rpm" style="color:var(--cyan)">—</div>
+            <div class="stat-change">Rotations per minute avg</div>
+        </div>
+        <div class="card stat-card">
+            <div class="label">Uptime</div>
+            <div class="stat-num" id="stat-uptime" style="color:var(--emerald)">—</div>
+            <div class="stat-change">Since system start</div>
+        </div>
+    </div>
+
+    <!-- ── LIVE FEED ── -->
+    <div class="card feed-card">
+        <div class="section-header">
+            <div class="section-title" style="color:var(--violet)">Raw MQTT Feed</div>
+            <span style="font-size:0.65rem;color:var(--text-3);font-family:var(--mono)" id="feed-count">0 messages</span>
+        </div>
+        <ul class="feed-list" id="feed-list"></ul>
+    </div>
+
+    <!-- ── CONNECTION FLOW ── -->
+    <div class="card conn-card">
+        <div class="section-header">
+            <div class="section-title" style="color:var(--blue)">System Architecture</div>
+        </div>
+        <div class="conn-flow">
+            <div class="conn-node active">
+                <div class="conn-node-icon">🔌</div>
+                <div class="conn-node-label">ESP32</div>
+                <div class="conn-node-status" id="node-esp">● Publishing</div>
+            </div>
+            <div class="conn-arrow">→</div>
+            <div class="conn-node active">
+                <div class="conn-node-icon">📡</div>
+                <div class="conn-node-label">HiveMQ Broker</div>
+                <div class="conn-node-status">● broker.hivemq.com</div>
+            </div>
+            <div class="conn-arrow">→</div>
+            <div class="conn-node active">
+                <div class="conn-node-icon">⚙️</div>
+                <div class="conn-node-label">Node.js</div>
+                <div class="conn-node-status" id="node-server">● Relay Active</div>
+            </div>
+            <div class="conn-arrow">→</div>
+            <div class="conn-node active">
+                <div class="conn-node-icon">🌐</div>
+                <div class="conn-node-label">Dashboard</div>
+                <div class="conn-node-status" id="node-ui">● Live</div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+            <div style="background:rgba(255,255,255,0.02);border:1px solid var(--glass-border);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:0.62rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Last Message</div>
+                <div style="font-family:var(--mono);font-size:0.78rem;color:var(--text-1);margin-top:4px" id="last-msg-time">—</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.02);border:1px solid var(--glass-border);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:0.62rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Message Rate</div>
+                <div style="font-family:var(--mono);font-size:0.78rem;color:var(--text-1);margin-top:4px" id="msg-rate">—/s</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── FOOTER ── -->
+    <div class="footer">
+        <p>ESP32 → Supabase REST → Supabase Realtime → Dedicated Dashboard</p>
+        <div class="footer-badge">⚡ Motor Digital Twin CLOUD &nbsp;|&nbsp; Persistent monitoring</div>
+    </div>
+
+</div><!-- end grid -->
+</div><!-- end app -->
+
+<script>
+// =====================================================
+//  MOTOR DIGITAL TWIN — FULL DASHBOARD v2.1
+// =====================================================
+
+// --- Supabase Config ---
+const SUPABASE_URL = 'https://mfrbnxzhmsgskyvxqcxw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_p5yFqBJCGW6bhv31q4rovQ_IUfRbszr';
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// --- Stats ---
+const state = {
+    history: [],
+    alerts: [],
+    feedCount: 0,
+    startTime: Date.now(),
+    lastMsgTime: null,
+    msgTimes: [],
+    prevData: null,
+    activeChart: 'rpm'
+};
+
+// --- DOM refs ---
+const connBadge = document.getElementById('conn-badge');
+const connText = document.getElementById('conn-text');
+
+// --- Chart Setup ---
+const chartCtx = document.getElementById('mainChart').getContext('2d');
+const chartData = {
+    labels: [],
+    datasets: [
+        { label: 'RPM', data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.07)', borderWidth: 2, tension: 0.4, pointRadius: 0, fill: true, yAxisID: 'y' },
+        { label: 'Current (A)', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.07)', borderWidth: 2, tension: 0.4, pointRadius: 0, fill: true, yAxisID: 'y1', hidden: true },
+        { label: 'Temp (°C)', data: [], borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.07)', borderWidth: 2, tension: 0.4, pointRadius: 0, fill: true, yAxisID: 'y1', hidden: true }
+    ]
+};
+
+const mainChart = new Chart(chartCtx, {
+    type: 'line',
+    data: chartData,
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 200 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: '#0c1322', borderColor: 'rgba(59,130,246,0.2)', borderWidth: 1,
+                titleColor: '#8ba3c7', bodyColor: '#f0f6ff', padding: 10,
+            }
+        },
+        scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#4d6585', font: { size: 9 }, maxRotation: 0, maxTicksLimit: 8 } },
+            y: { position: 'left', grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#06b6d4', font: { size: 9 } } },
+            y1: { position: 'right', grid: { display: false }, ticks: { color: '#fb7185', font: { size: 9 } } }
+        }
+    }
+});
+
+function switchChart(type) {
+    state.activeChart = type;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    mainChart.data.datasets[0].hidden = type !== 'rpm' && type !== 'all';
+    mainChart.data.datasets[1].hidden = type !== 'current' && type !== 'all';
+    mainChart.data.datasets[2].hidden = type !== 'temp' && type !== 'all';
+    mainChart.update('none');
+}
+
+// --- Gauge helper (SVG arc) ---
+function setGauge(fillId, valId, value, max, color) {
+    const pct = Math.min(Math.max(value / max, 0), 1);
+    const totalLen = 240; // approx arc length
+    const dashoffset = totalLen - pct * totalLen;
+    const fillEl = document.getElementById(fillId);
+    fillEl.style.strokeDasharray = totalLen;
+    fillEl.style.strokeDashoffset = dashoffset;
+    fillEl.style.stroke = color;
+    document.getElementById(valId).textContent = typeof value === 'number' ? (value % 1 === 0 ? value : value.toFixed(1)) : value;
+}
+
+// --- Health calculation ---
+function calcHealth(d) {
+    let score = 100; const issues = [];
+    if (d.temperature > 80)  { score -= 40; issues.push({ level: 'critical', msg: 'Temperature critically high!' }); }
+    else if (d.temperature > 60) { score -= 20; issues.push({ level: 'warning', msg: 'High temperature detected' }); }
+
+    if (d.current > 25) { score -= 35; issues.push({ level: 'critical', msg: 'Overcurrent — Motor at risk!' }); }
+    else if (d.current > 20) { score -= 15; issues.push({ level: 'warning', msg: 'Elevated current draw' }); }
+
+    if (d.vibration > 0.8) { score -= 30; issues.push({ level: 'critical', msg: 'Excessive vibration!' }); }
+    else if (d.vibration > 0.5) { score -= 15; issues.push({ level: 'warning', msg: 'High vibration level' }); }
+
+    if (d.rpm > 4500) { score -= 15; issues.push({ level: 'warning', msg: 'Motor overspeed detected' }); }
+
+    score = Math.max(score, 0);
+    const status = score >= 70 ? 'Healthy' : score >= 40 ? 'Warning' : 'Critical';
+    return { score, status, issues };
+}
+
+// --- Badge helper ---
+function badge(level) {
+    if (level === 'critical') return '<div class="mc-badge crit">CRIT</div>';
+    if (level === 'warning') return '<div class="mc-badge warn">WARN</div>';
+    return '<div class="mc-badge ok">OK</div>';
+}
+
+// --- Main update ---
+function update(d) {
+    const now = new Date();
+    d.voltage = d.voltage || 0;
+    d.power = d.power || 0;
+
+    // Metric cards (keys must match HTML element IDs: val-temp, val-current, val-vib, val-rpm)
+    setCard('temp',    d.temperature, d.temperature / 100,  '°C', d.temperature > 80 ? 'crit' : d.temperature > 60 ? 'warn' : 'ok', 'badge-temp');
+    setCard('current', d.current,     d.current / 30,       'A',  d.current > 25 ? 'crit' : d.current > 20 ? 'warn' : 'ok',         'badge-curr');
+    setCard('voltage', d.voltage,     d.voltage / 25,       'V',  d.voltage > 18 ? 'crit' : d.voltage > 15 ? 'warn' : 'ok',         'badge-volt');
+    setCard('power',   d.power,       d.power / 600,        'W',  d.power > 500 ? 'crit' : d.power > 450 ? 'warn' : 'ok',           'badge-power');
+    setCard('vib',     d.vibration,   d.vibration / 1,      'G',  d.vibration > 0.8 ? 'crit' : d.vibration > 0.5 ? 'warn' : 'ok',   'badge-vib');
+    setCard('rpm',     d.rpm,         d.rpm / 5000,         '',   d.rpm > 4500 ? 'warn' : 'ok',                                       'badge-rpm');
+
+    // Deltas
+    if (state.prevData) {
+        showDelta('delta-temp', d.temperature - state.prevData.temperature, '°C');
+        showDelta('delta-curr', d.current - state.prevData.current, 'A');
+        showDelta('delta-volt', d.voltage - state.prevData.voltage, 'V');
+        showDelta('delta-power', d.power - state.prevData.power, 'W');
+        showDelta('delta-vib', d.vibration - state.prevData.vibration, 'G');
+        showDelta('delta-rpm', d.rpm - state.prevData.rpm, '');
+    }
+    state.prevData = d;
+
+    // Gauges
+    setGauge('gauge-rpm-fill', 'gauge-rpm-val', d.rpm, 5000, '#06b6d4');
+    setGauge('gauge-temp-fill', 'gauge-temp-val', d.temperature, 100, '#fb7185');
+
+    // Health
+    const h = calcHealth(d);
+    updateHealth(h);
+
+    // Chart
+    const t = now.toLocaleTimeString('en', { hour12: false });
+    chartData.labels.push(t);
+    chartData.datasets[0].data.push(d.rpm);
+    chartData.datasets[1].data.push(d.current);
+    chartData.datasets[2].data.push(d.temperature);
+    if (chartData.labels.length > 30) {
+        chartData.labels.shift();
+        chartData.datasets.forEach(ds => ds.data.shift());
+    }
+    mainChart.update('none');
+
+    // Alerts
+    updateAlerts(h.issues, d);
+
+    // Feed
+    addFeed(d, now);
+
+    // Header time
+    document.getElementById('hdr-time').textContent = now.toLocaleTimeString();
+    document.getElementById('last-msg-time').textContent = now.toLocaleTimeString();
+
+    // Message rate
+    state.msgTimes.push(Date.now());
+    state.msgTimes = state.msgTimes.filter(t => t > Date.now() - 10000);
+    document.getElementById('msg-rate').textContent = (state.msgTimes.length / 10).toFixed(1) + '/s';
+
+    // Critical body mode
+    document.body.classList.toggle('critical-mode', h.status === 'Critical');
+}
+
+function setCard(key, value, pct, unit, level, badgeId) {
+    const clamped = Math.min(Math.max(pct, 0), 1);
+    const valEl = document.getElementById('val-' + key);
+    const formatted = typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(2)) : '—';
+    valEl.textContent = formatted;
+    valEl.classList.remove('val-flash');
+    void valEl.offsetWidth;
+    valEl.classList.add('val-flash');
+
+    document.getElementById('bar-' + key).style.width = (clamped * 100) + '%';
+
+    const bId = badgeId || ('badge-' + key);
+    const bEl = document.getElementById(bId);
+    if (bEl) {
+        bEl.className = 'mc-badge ' + level;
+        bEl.textContent = level === 'crit' ? 'CRIT' : level === 'warn' ? 'WARN' : 'OK';
+    }
+}
+
+function showDelta(id, diff, unit) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const sign = diff > 0 ? '+' : '';
+    const col = diff > 0 ? '#fb7185' : diff < 0 ? '#10b981' : '#4d6585';
+    el.style.color = col;
+    el.textContent = sign + (typeof diff === 'number' ? diff.toFixed(1) : diff) + unit;
+}
+
+function updateHealth(h) {
+    const color = h.status === 'Healthy' ? '#10b981' : h.status === 'Warning' ? '#f59e0b' : '#f43f5e';
+    const circumference = 2 * Math.PI * 65;
+    const ring = document.getElementById('h-ring');
+    ring.style.strokeDashoffset = circumference - (h.score / 100) * circumference;
+    ring.style.stroke = color;
+    ring.style.filter = `drop-shadow(0 0 6px ${color})`;
+
+    document.getElementById('health-pct').style.color = color;
+    document.getElementById('health-pct').textContent = h.score;
+    document.getElementById('health-status-badge').style.color = color;
+    document.getElementById('health-status-badge').textContent = h.status;
+
+    const descs = { Healthy: 'All systems operating normally', Warning: 'Attention required', Critical: '⚠️ Immediate action needed!' };
+    document.getElementById('health-desc').textContent = descs[h.status];
+}
+
+function updateAlerts(issues, data) {
+    const now = new Date().toLocaleTimeString();
+    if (issues.length === 0) {
+        document.getElementById('alert-list').innerHTML = `
+            <div class="alert-empty">
+                <div class="alert-empty-icon">✅</div>
+                <div class="alert-empty-text">System nominal — All values in range</div>
+            </div>`;
+        return;
+    }
+    document.getElementById('alert-list').innerHTML = issues.map(i => `
+        <div class="alert-item ${i.level}">
+            <div class="alert-dot"></div>
+            <div class="alert-msg">${i.msg}</div>
+            <div class="alert-time">${now}</div>
+        </div>`).join('');
+}
+
+const MAX_FEED = 20;
+function addFeed(d, now) {
+    state.feedCount++;
+    document.getElementById('feed-count').textContent = state.feedCount + ' messages';
+
+    const li = document.createElement('li');
+    li.className = 'feed-item';
+    li.innerHTML = `
+        <span class="feed-time">${now.toLocaleTimeString()}</span>
+        <span class="feed-data">T:${d.temperature} V:${typeof d.voltage==='number'?d.voltage.toFixed(1):'0'} I:${typeof d.current==='number'?d.current.toFixed(1):'0'} W:${typeof d.power==='number'?Math.round(d.power):'0'} Vb:${d.vibration} RPM:${d.rpm}</span>
+    `;
+    const list = document.getElementById('feed-list');
+    list.insertBefore(li, list.firstChild);
+    while (list.children.length > MAX_FEED) list.removeChild(list.lastChild);
+}
+
+function clearAlerts() {
+    document.getElementById('alert-list').innerHTML = `
+        <div class="alert-empty">
+            <div class="alert-empty-icon">🔕</div>
+            <div class="alert-empty-text">Alerts cleared manually</div>
+        </div>`;
+}
+
+// --- Stats loader ---
+async function loadStats() {
+    try {
+        const { data, count, error } = await supabase
+            .from('telemetry')
+            .select('*', { count: 'exact', head: true });
+        
+        if (error) throw error;
+
+        const { data: avgData, error: avgErr } = await supabase
+            .rpc('get_telemetry_stats'); // I'll create this RPC or just do client-side approx if needed
+        
+        // For speed, let's just use the count for now
+        document.getElementById('stat-count').textContent = count || '0';
+        document.getElementById('hdr-count').textContent = count || '0';
+        
+        // Approx averages from last 100 for now if RPC isn't ready
+        const { data: recent } = await supabase.from('telemetry').select('current, rpm').limit(100);
+        if (recent && recent.length > 0) {
+            const avgCurr = recent.reduce((a, b) => a + (b.current || 0), 0) / recent.length;
+            const avgRpm = recent.reduce((a, b) => a + (b.rpm || 0), 0) / recent.length;
+            document.getElementById('stat-avg-curr').innerHTML = avgCurr.toFixed(1) + '<span style="font-size:0.9rem">A</span>';
+            document.getElementById('stat-avg-rpm').textContent = Math.round(avgRpm);
+            document.getElementById('hdr-avg-rpm').textContent = Math.round(avgRpm);
+            document.getElementById('hdr-avg-curr').textContent = avgCurr.toFixed(1);
+        }
+    } catch (e) { console.error('Stats error:', e.message); }
+}
+
+// --- History loader ---
+async function loadHistory() {
+    try {
+        const { data: rows, error } = await supabase
+            .from('telemetry')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(25);
+            
+        if (error) throw error;
+        if (!rows || rows.length === 0) return;
+        
+        const sortedRows = [...rows].reverse();
+        sortedRows.forEach(row => {
+            const t = new Date(row.created_at).toLocaleTimeString('en', { hour12: false });
+            chartData.labels.push(t);
+            chartData.datasets[0].data.push(row.rpm);
+            chartData.datasets[1].data.push(row.current);
+            chartData.datasets[2].data.push(row.temperature);
+        });
+        mainChart.update();
+        const latest = rows[0];
+        update(latest);
+        console.log(`📊 Loaded ${rows.length} historical records from Supabase`);
+    } catch (e) { console.info('History not available:', e.message); }
+}
+
+// --- Uptime ticker ---
+setInterval(() => {
+    const s = Math.floor((Date.now() - state.startTime) / 1000);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    document.getElementById('stat-uptime').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}, 1000);
+
+// Stats refresh every 30s
+loadStats();
+setInterval(loadStats, 30000);
+
+// --- Supabase Realtime connection ---
+function connectSupabase() {
+    console.log('🔗 Connecting to Supabase Realtime...');
+    connBadge.className = 'conn-badge connected';
+    connText.textContent = 'Live';
+    document.getElementById('node-ui').textContent = '● Realtime';
+    document.getElementById('node-server').textContent = '● Supabase';
+
+    const channel = supabase
+        .channel('telemetry_updates')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'telemetry' }, (payload) => {
+            console.log('📦 New Telemetry:', payload.new);
+            update(payload.new);
+        })
+        .subscribe();
+}
+
+// Kick off
+loadHistory();
+connectSupabase();
+</script>
+</body>
+</html>

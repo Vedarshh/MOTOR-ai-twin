@@ -1,0 +1,12 @@
+{
+  "name": "motor-digital-twin-server",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "mqtt": "^5.10.1",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.20.0"
+  }
+}
